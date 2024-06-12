@@ -2,6 +2,7 @@
 import {NEX} from "./NEX.sol";
 import {ReentrancyGuard} from "@openzeppelin/contracts/security/ReentrancyGuard.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import {AggregatorV3Interface} from "@chainlink/contracts/src/v0.8/interfaces/AggregatorV3Interface.sol";
 
 pragma solidity ^0.8.19;
 
@@ -20,15 +21,21 @@ contract NEXEngine is ReentrancyGuard {
     error NEXEngine_NeedsMoreThanZero();
     error NEXEngine_ColletralNotAllowed();
     error NEXEngine_DepositeFailed();
+    error NEXEngine_HealthFactorIsLessThanOne();
 
     // *********************************** //
     //        State Variables              //
     // *********************************** //
 
     NEX private immutable _nex;
+    uint256 private ADDITIONAL_FEED_PRECISION = 1e18;
+    uint256 private PRECISION = 1e10;
+    uint256 private MIN_HEALTH_FACTOR = 1e18;
+    address private COLLETRAL;
 
     mapping(address token => address priceFeed) private _priceFeeds;
     mapping(address token => uint256) private _collateralDeposited;
+    mapping(address user => uint256) private s_nexMinted;
 
 
     // *********************//
@@ -58,6 +65,7 @@ contract NEXEngine is ReentrancyGuard {
     constructor(address _colletral, address _priceFeed, address _stableCoin) {
         _priceFeeds[_colletral] = _priceFeed;
         _nex = NEX(_stableCoin);
+        COLLETRAL= _colletral;
     }
 
     // *********************************** //
@@ -79,7 +87,7 @@ contract NEXEngine is ReentrancyGuard {
         if (!success) {
             revert NEXEngine_DepositeFailed();
         }
-        emit DepositeColletral(msg.sender, _colletral, _amount)git ;
+        emit DepositeColletral(msg.sender, _colletral, _amount) ;
     }
 
     function redeemCollectral() external {}
@@ -88,7 +96,44 @@ contract NEXEngine is ReentrancyGuard {
 
     function burnNEX() external {}
 
-    function mintNEX() external {}
+    /*
+     * @dev Mint NEX tokens
+     * @param _amountToMintNEX Amount of NEX decentralized stable coins to mint
+     * @notice They should have deposited more collateral than the minimum threshold
+     */
+    function mintNEX(uint256 _amountToMintNEX) moreThanZero(_amountToMintNEX) nonReentrant() external {
+        s_nexMinted[msg.sender] += _amountToMintNEX;
+        _revertIFHealthFactorIsLessThanOne(msg.sender);
+        _nex.mint(msg.sender, _amountToMintNEX);
+    }
+
+    function _healthFactor(address _user) public view returns(uint256) {
+        (uint256 totalNEXMinted, uint256 totalColletralInUSD) = getAccountInformation(_user);
+        return (totalColletralInUSD / totalNEXMinted);
+    }
+
+    function _revertIFHealthFactorIsLessThanOne(address _user) private view{
+        uint256 healthFactor = _healthFactor(_user);
+        if (healthFactor < MIN_HEALTH_FACTOR) {
+            revert NEXEngine_HealthFactorIsLessThanOne();
+        }
+    }
+
+    function getAccountInformation(address user) private view returns(uint256 totalNEXMinted,uint256 totalColletralInUSD ) {
+        totalNEXMinted = s_nexMinted[user];
+        totalColletralInUSD = getUSDValueOfColletral(COLLETRAL, totalNEXMinted);
+        return (totalNEXMinted, totalColletralInUSD);
+    }
+
+    function getUSDValueOfColletral(address _colletral, uint256 _amount) internal view returns(uint256) {
+        address priceFeed = _priceFeeds[_colletral];
+        (,int256 price,,,) = AggregatorV3Interface(priceFeed).latestRoundData();
+        return ((uint256(price) * ADDITIONAL_FEED_PRECISION * _amount) / PRECISION);
+    }
+
+
+
+
 
     function liquidate() external {}
 
