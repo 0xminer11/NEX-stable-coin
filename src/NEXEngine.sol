@@ -31,6 +31,8 @@ contract NEXEngine is ReentrancyGuard {
     uint256 private ADDITIONAL_FEED_PRECISION = 1e18;
     uint256 private PRECISION = 1e10;
     uint256 private MIN_HEALTH_FACTOR = 1e18;
+    uint256 private constant LIQUIDATION_THRESHOLD = 50;
+    uint256 private constant LIQUIDATION_PRICISION = 100; 
     address private COLLETRAL;
 
     mapping(address token => address priceFeed) private _priceFeeds;
@@ -58,8 +60,8 @@ contract NEXEngine is ReentrancyGuard {
     modifier isAllowed(address _collateral) {
         if (_priceFeeds[_collateral] == address(0)) {
             revert NEXEngine_ColletralNotAllowed();
-            _;
         }
+        _;
     }
 
     constructor(address _colletral, address _priceFeed, address _stableCoin) {
@@ -109,7 +111,9 @@ contract NEXEngine is ReentrancyGuard {
 
     function _healthFactor(address _user) public view returns(uint256) {
         (uint256 totalNEXMinted, uint256 totalColletralInUSD) = getAccountInformation(_user);
-        return (totalColletralInUSD / totalNEXMinted);
+        uint256 colletrlAdjustedThreshould = (totalColletralInUSD * LIQUIDATION_THRESHOLD) / LIQUIDATION_PRICISION;
+        // return (totalColletralInUSD / totalNEXMinted);
+        return (colletrlAdjustedThreshould * PRECISION) / totalNEXMinted;
     }
 
     function _revertIFHealthFactorIsLessThanOne(address _user) private view{
@@ -130,8 +134,6 @@ contract NEXEngine is ReentrancyGuard {
         (,int256 price,,,) = AggregatorV3Interface(priceFeed).latestRoundData();
         return ((uint256(price) * ADDITIONAL_FEED_PRECISION * _amount) / PRECISION);
     }
-
-
 
 
 
