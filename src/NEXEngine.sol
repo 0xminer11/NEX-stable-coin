@@ -73,7 +73,7 @@ contract NEXEngine is ReentrancyGuard {
             mintNEX(amountNexToMint);
     }
 
-    function _depositeCollateral(address _colletral, uint256 _amount) internal moreThanZero(_amount) isAllowed(_colletral) nonReentrant{
+    function _depositeCollateral(address _colletral, uint256 _amount) internal{
         // Transfer the colletral to this contract
         // Calculate the value of the colletral
         // Mint NEX tokens
@@ -100,14 +100,14 @@ contract NEXEngine is ReentrancyGuard {
         uint256 collateralAmount,
         uint256 nexAmount)
         external {
-        _burnNEX(nexAmount,msg.sender);
+        _burnNEX(nexAmount,msg.sender,msg.sender);
         _redeemCollateral(tokenCollateralAddress,collateralAmount,msg.sender);
     }   
 
-    function _burnNEX(uint256 amountNexToburn, address onbehalf) internal {
+    function _burnNEX(uint256 amountNexToburn, address onbehalf,address fromnex) internal {
         s_NexMinted[onbehalf] -= amountNexToburn;
 
-        bool success = _nex.transfer(address(this), amountNexToburn);
+        bool success = _nex.transferFrom(fromnex,address(this), amountNexToburn);
 
         if(!success){
             revert NEXEngine_burnFailed();
