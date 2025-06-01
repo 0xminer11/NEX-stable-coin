@@ -20,6 +20,8 @@ contract NEXEngine is ReentrancyGuard {
     error NEXEngine_NeedsMoreThanZero();
     error NEXEngine_ColletralNotAllowed();
     error NEXEngine_DepositeFailed();
+    error NEXEngine_RedeemFailed();
+    error NEXEngine_burnFailed();
 
     // *********************************** //
     //        State Variables              //
@@ -29,7 +31,7 @@ contract NEXEngine is ReentrancyGuard {
 
     mapping(address token => address priceFeed) private _priceFeeds;
     mapping(address token => uint256) private _collateralDeposited;
-
+    mapping(address user => uint256 amount) private s_NexMinted;
 
     // *********************//
     //       Events         //
@@ -63,14 +65,15 @@ contract NEXEngine is ReentrancyGuard {
     // *********************************** //
     //        External Functions           //
     // *********************************** //
-    function depositeColletralMintNEX() external {}
+    function depositeColletralMintNEX(
+        address tokenCollateralAddress,
+        uint256 amountCollateral,
+        uint256 amountNexToMint) external nonReentrant {
+            _depositeCollateral(tokenCollateralAddress,amountCollateral);
+            mintNEX(amountNexToMint);
+    }
 
-    function depositeColletral(address _colletral, uint256 _amount)
-        external
-        moreThanZero(_amount)
-        isAllowed(_colletral)
-        nonReentrant
-    {
+    function _depositeCollateral(address _colletral, uint256 _amount) internal moreThanZero(_amount) isAllowed(_colletral){
         // Transfer the colletral to this contract
         // Calculate the value of the colletral
         // Mint NEX tokens
@@ -79,18 +82,60 @@ contract NEXEngine is ReentrancyGuard {
         if (!success) {
             revert NEXEngine_DepositeFailed();
         }
-        emit DepositeColletral(msg.sender, _colletral, _amount)git ;
+        emit DepositeColletral(msg.sender, _colletral, _amount) ;
     }
 
-    function redeemCollectral() external {}
+    function redeemCollectral(
+        address tokenCollateralAddress,
+        uint256 amountCollateral ) 
+        external 
+        nonReentrant
+        moreThanZero(amountCollateral)
+        {
+            _redeemCollateral(tokenCollateralAddress, amountCollateral, msg.sender);
+        }
 
-    function redeemNEXForColletral() external {}
+    function redeemColletralForNex(
+        address tokenCollateralAddress,
+        uint256 collateralAmount,
+        uint256 nexAmount)
+        external {
+        _burnNEX(nexAmount,msg.sender);
+        _redeemCollateral(tokenCollateralAddress,collateralAmount,msg.sender);
+    }   
 
-    function burnNEX() external {}
+    function _burnNEX(uint256 amountNexToburn, address onbehalf) internal {
+        s_NexMinted[onbehalf] -= amountNexToburn;
 
-    function mintNEX() external {}
+        bool success = _nex.transfer(address(this), amountNexToburn);
+
+        if(!success){
+            revert NEXEngine_burnFailed();
+        }
+    }
+
+    function mintNEX(uint256 _amountNexToMint) internal {
+        s_NexMinted[msg.sender] += _amountNexToMint;
+
+        // check health Factor of user
+        // logic Here
+
+        // Mint Nex Stable Coin
+        _nex.mint(msg.sender, _amountNexToMint);
+
+    }
 
     function liquidate() external {}
 
     function getHealthFactor() external {}
+
+    function _redeemCollateral(address collateralAddress,uint256 amountCollateral,address to) private {
+        _collateralDeposited[msg.sender] -= amountCollateral;
+
+        bool success = IERC20(collateralAddress).transfer(to, amountCollateral);
+
+        if (!success){
+            revert NEXEngine_RedeemFailed();
+        }
+    }
 }
