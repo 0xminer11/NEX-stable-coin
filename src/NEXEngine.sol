@@ -73,7 +73,7 @@ contract NEXEngine is ReentrancyGuard {
             mintNEX(amountNexToMint);
     }
 
-    function _depositeCollateral(address _colletral, uint256 _amount) internal moreThanZero(_amount) isAllowed(_colletral){
+    function _depositeCollateral(address _colletral, uint256 _amount) internal moreThanZero(_amount) isAllowed(_colletral) nonReentrant{
         // Transfer the colletral to this contract
         // Calculate the value of the colletral
         // Mint NEX tokens
